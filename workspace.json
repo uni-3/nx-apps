@@ -1,4 +1,7 @@
 {
   "version": 2,
-  "projects": {}
+  "projects": {
+    "address-temp": "apps/address-temp",
+    "address-temp-e2e": "apps/address-temp-e2e"
+  }
 }
