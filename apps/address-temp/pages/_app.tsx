@@ -9,7 +9,7 @@ function CustomApp({ Component, pageProps }: AppProps) {
   return (
     <>
       <Head>
-        <title className="text-indigo-600">Welcome to address-temp!</title>
+        <title className="text-indigo-600">住所フォーム!</title>
       </Head>
       <main className="app">
         <Component {...pageProps} />
