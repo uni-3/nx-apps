@@ -1,3 +1,4 @@
+import React from 'react';
 import './lookup.module.css';
 import { useForm } from 'react-hook-form';
 
