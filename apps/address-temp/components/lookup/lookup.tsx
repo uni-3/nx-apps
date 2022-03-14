@@ -83,6 +83,15 @@ export function Lookup(props: LookupProps) {
   const onSubmit = (data: AddressForm) => {
     console.log('submitted!!', data);
   };
+
+  const watchFields = watch([
+    'postal',
+    'prefecture',
+    'city',
+    'address1',
+    'address2',
+  ]);
+  
   return (
     <div>
       <h2>郵便番号正引き検索</h2>
