@@ -1,6 +1,9 @@
 import React from 'react';
 import './lookup.module.css';
 import { useForm } from 'react-hook-form';
+import { Address } from '@ken-all/kenall';
+
+import { getAddresses } from '../../libs/api/kenall';
 
 /* eslint-disable-next-line */
 export interface LookupProps {}
@@ -11,6 +14,84 @@ type AddressForm = {
   city: string;
   address1: string;
   address2: string;
+};
+
+// tsxでは
+const countVariations = <T,>(
+  items: Iterable<T>,
+  callback: (item: T) => any
+): number => {
+  const c: Record<any, number> = {};
+  let variations = 0;
+  for (const item of items) {
+    const k = callback(item);
+    if (c[k] === undefined) {
+      variations++;
+      c[k] = 1;
+    } else {
+      c[k]++;
+    }
+  }
+  return variations;
+};
+
+const buildAddressLines = (addresses: Address[]): [string, string] => {
+  // 候補なしの場合
+  if (addresses.length === 0) {
+    return ['', ''];
+  } else if (addresses.length === 1) {
+    const address = addresses[0];
+    // 個別事業所番号
+    if (address.corporation) {
+      return [address.corporation.block_lot, address.building + address.floor];
+    } else {
+      // 住所の要素を組み立てる
+      const elements: string[] = [];
+      if (address.kyoto_street) {
+        elements.push(address.kyoto_street);
+      }
+      elements.push(address.town);
+      if (address.koaza) {
+        elements.push(address.koaza);
+      }
+      return [elements.join(' '), addresses[0].building + addresses[0].floor];
+    }
+  } else {
+    // 都道府県や市区町村のバリエーションが複数ある場合は
+    // 補完しても意味がないので補完は行わない
+    if (
+      countVariations(addresses, (address) => address.prefecture) > 1 ||
+      countVariations(addresses, (address) => address.city) > 1
+    ) {
+      return ['', ''];
+    }
+
+    // 町域が複数ある場合も補完しない
+    const nTowns = countVariations(addresses, (address) => address.town);
+    if (nTowns > 1) {
+      return ['', ''];
+    }
+
+    // 住所の要素を組み立てる
+    const elements: string[] = [];
+
+    const nKoazas = countVariations(addresses, (address) => address.koaza);
+    if (nKoazas === 1) {
+      const nKyotoStreets = countVariations(
+        addresses.filter((address) => Boolean(address.kyoto_street)),
+        (address) => address.kyoto_street
+      );
+      if (nKyotoStreets === 1) {
+        elements.push(addresses[0].kyoto_street || '');
+      }
+      elements.push(addresses[0].town);
+      elements.push(addresses[0].koaza);
+    } else {
+      elements.push(addresses[0].town);
+    }
+
+    return [elements.join(' '), ''];
+  }
 };
 
 const PrefList: React.FC = () => {
@@ -91,7 +172,72 @@ export function Lookup(props: LookupProps) {
     'address1',
     'address2',
   ]);
-  
+  // loading
+  const timerRef = React.useRef<number | undefined>(undefined);
+  const [timerRunning, setTimerRunning] = React.useState<boolean>(false);
+
+  React.useEffect(() => {
+    if (timerRef.current !== undefined) {
+      window.clearTimeout(timerRef.current);
+      timerRef.current = undefined;
+      setTimerRunning(false);
+    }
+    // すでに入力済みであれば何もしない
+    const [postalCode, prefecture, city, address1, address2] = watchFields;
+    if (prefecture || city || address1 || address2) {
+      return;
+    }
+
+    getAddresses(postalCode).then(([canonical, candidates]) => {
+      // registerのform値
+      setValue('postal', canonical);
+      // promiseのあとなのでwatchFieldsの値が古くなってないか確認
+      {
+        const [prefecture, city, address1, address2] = getValues([
+          'prefecture',
+          'city',
+          'address1',
+          'address2',
+        ]);
+        if (prefecture || city || address1 || address2) {
+          return;
+        }
+      }
+      // 候補がない場合にも補完は実行しない
+      if (candidates.data.length === 0) {
+        return;
+      }
+      // ブラウザのautocompleteを邪魔しないように2秒後に補完を発動する
+      timerRef.current = window.setTimeout(() => {
+        setTimerRunning(false);
+        // 再度バリデーション
+        {
+          const [prefecture, city, address1, address2] = getValues([
+            'prefecture',
+            'city',
+            'address1',
+            'address2',
+          ]);
+          if (prefecture || city || address1 || address2) {
+            return;
+          }
+        }
+        const candidate = candidates.data[0];
+        setValue('prefecture', candidate.jisx0402.substring(0, 2));
+        setValue('city', candidate.city);
+        const [address1, address2] = buildAddressLines(candidates.data);
+        setValue('address1', address1);
+        setValue('address2', address2);
+      }, 2000);
+      setTimerRunning(true);
+    });
+    return () => {
+      if (timerRef.current !== undefined) {
+        window.clearTimeout(timerRef.current);
+      }
+    };
+  }, watchFields); /* eslint "react-hooks/exhaustive-deps": "off" */
+
   return (
     <div>
       <h2>郵便番号正引き検索</h2>
